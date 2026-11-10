@@ -1,281 +1,413 @@
 
+import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setEnabledSystemUIMode(
-    SystemUiMode.immersiveSticky,
+void main() => runApp(const Puzzle64App());
+
+class Puzzle64App extends StatelessWidget {
+  const Puzzle64App({super.key});
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    title: '64 - Combina numerele',
+    theme: ThemeData(
+      useMaterial3: true,
+      colorSchemeSeed: Colors.deepOrange,
+    ),
+    home: const Puzzle64Page(),
   );
-  runApp(const TicTacToeApp());
 }
 
-class TicTacToeApp extends StatelessWidget {
-  const TicTacToeApp({super.key});
+class Puzzle64Page extends StatefulWidget {
+  const Puzzle64Page({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Tic Tac Toe',
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-      ),
-      home: const TicTacToePage(),
-    );
+  State<Puzzle64Page> createState() => _Puzzle64PageState();
+}
+
+class _Puzzle64PageState extends State<Puzzle64Page> {
+  final Random _random = Random();
+  final TextEditingController _details = TextEditingController();
+
+  List<int> _tiles = List.filled(16, 0);
+  int _score = 0;
+  int _moves = 0;
+  bool _won = false;
+  bool _lost = false;
+  Offset _drag = Offset.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _newGame();
   }
-}
 
-class TicTacToePage extends StatefulWidget {
-  const TicTacToePage({super.key});
+  void _newGame() {
+    setState(() {
+      _tiles = List.filled(16, 0);
+      _tiles[5] = 2;
+      _tiles[10] = 2;
+      _score = 0;
+      _moves = 0;
+      _won = false;
+      _lost = false;
+      _details.text =
+          'Joc nou!\n\n'
+          'Gliseaza sau foloseste sagetile. '
+          'Uneste numere identice pana ajungi la 64.';
+    });
+  }
 
-  @override
-  State<TicTacToePage> createState() =>
-      _TicTacToePageState();
-}
+  bool _hasMoves(List<int> tiles) {
+    if (tiles.contains(0)) return true;
 
-class _TicTacToePageState extends State<TicTacToePage> {
-  final List<String> board = List.filled(9, '');
-
-  String current = 'X';
-  String? winner;
-  bool draw = false;
-
-  int xWins = 0;
-  int oWins = 0;
-  int draws = 0;
-
-  List<int> winningLine = [];
-
-  static const lines = <List<int>>[
-    [0, 1, 2],
-    [3, 4, 5],
-    [6, 7, 8],
-    [0, 3, 6],
-    [1, 4, 7],
-    [2, 5, 8],
-    [0, 4, 8],
-    [2, 4, 6],
-  ];
-
-  void play(int index) {
-    if (board[index].isNotEmpty ||
-        winner != null ||
-        draw) {
-      return;
+    for (var i = 0; i < 16; i++) {
+      if (i % 4 < 3 && tiles[i] == tiles[i + 1]) return true;
+      if (i < 12 && tiles[i] == tiles[i + 4]) return true;
     }
 
-    setState(() {
-      board[index] = current;
+    return false;
+  }
 
-      for (final line in lines) {
-        if (line.every((i) => board[i] == current)) {
-          winner = current;
-          winningLine = line;
+  void _move(String direction) {
+    if (_won || _lost) return;
 
-          if (current == 'X') {
-            xWins++;
-          } else {
-            oWins++;
-          }
-          return;
+    final next = List<int>.from(_tiles);
+    final combinations = <String>[];
+    var earned = 0;
+
+    for (var line = 0; line < 4; line++) {
+      final indices = List<int>.generate(4, (j) {
+        switch (direction) {
+          case 'left':
+            return line * 4 + j;
+          case 'right':
+            return line * 4 + (3 - j);
+          case 'up':
+            return j * 4 + line;
+          default:
+            return (3 - j) * 4 + line;
+        }
+      });
+
+      final values = indices
+          .map((i) => next[i])
+          .where((n) => n != 0)
+          .toList();
+
+      final merged = <int>[];
+
+      for (var j = 0; j < values.length; j++) {
+        if (j + 1 < values.length &&
+            values[j] == values[j + 1]) {
+          final result = values[j] * 2;
+          merged.add(result);
+          combinations.add(
+            '${values[j]} + ${values[j]} = $result',
+          );
+          earned += result;
+          j++;
+        } else {
+          merged.add(values[j]);
         }
       }
 
-      if (board.every((cell) => cell.isNotEmpty)) {
-        draw = true;
-        draws++;
-      } else {
-        current = current == 'X' ? 'O' : 'X';
+      for (var j = 0; j < 4; j++) {
+        next[indices[j]] =
+            j < merged.length ? merged[j] : 0;
       }
-    });
-  }
+    }
 
-  void resetBoard() {
+    const directions = {
+      'left': 'STANGA',
+      'right': 'DREAPTA',
+      'up': 'SUS',
+      'down': 'JOS',
+    };
+
+    final label = directions[direction]!;
+
+    final unchanged = List.generate(16, (i) => i)
+        .every((i) => next[i] == _tiles[i]);
+
+    if (unchanged) {
+      setState(() {
+        _details.text =
+            'Mutare spre $label.\n\n'
+            'Nicio piesa nu se poate deplasa. '
+            'Incearca alta directie.';
+      });
+      return;
+    }
+
+    final victory = next.any((n) => n >= 64);
+    int? spawned;
+
+    if (!victory) {
+      final empty = List.generate(16, (i) => i)
+          .where((i) => next[i] == 0)
+          .toList();
+
+      if (empty.isNotEmpty) {
+        spawned = _random.nextInt(10) == 0 ? 4 : 2;
+        next[empty[_random.nextInt(empty.length)]] =
+            spawned;
+      }
+    }
+
+    final defeat = !victory && !_hasMoves(next);
+
     setState(() {
-      board.fillRange(0, board.length, '');
-      current = 'X';
-      winner = null;
-      draw = false;
-      winningLine = [];
+      _tiles = next;
+      _score += earned;
+      _moves++;
+      _won = victory;
+      _lost = defeat;
+
+      _details.text = [
+        'Mutarea $_moves: $label',
+        combinations.isEmpty
+            ? 'Piesele s-au deplasat fara combinari.'
+            : 'Combinari:\n${combinations.join('\n')}',
+        'Puncte castigate: $earned\n'
+            'Scor total: $_score',
+        if (spawned != null)
+          'A aparut o piesa noua: $spawned.',
+        if (victory)
+          'BRAVO! Ai obtinut 64! Ai castigat!',
+        if (defeat)
+          'Joc terminat! Nu mai exista mutari posibile.',
+      ].join('\n\n');
     });
   }
 
-  void resetScores() {
-    setState(() {
-      xWins = 0;
-      oWins = 0;
-      draws = 0;
+  Color _tileColor(int n) => switch (n) {
+    0 => const Color(0xFFCDC1B4),
+    2 => const Color(0xFFEEE4DA),
+    4 => const Color(0xFFEDE0C8),
+    8 => const Color(0xFFF2B179),
+    16 => const Color(0xFFF59563),
+    32 => const Color(0xFFF67C5F),
+    64 => const Color(0xFFF65E3B),
+    _ => const Color(0xFF3C3A32),
+  };
 
-      board.fillRange(0, board.length, '');
-      current = 'X';
-      winner = null;
-      draw = false;
-      winningLine = [];
-    });
-  }
+  Widget _arrow(IconData icon, String direction) =>
+      IconButton.filledTonal(
+        onPressed: _won || _lost
+            ? null
+            : () => _move(direction),
+        icon: Icon(icon, size: 30),
+        iconSize: 30,
+        constraints: const BoxConstraints(
+          minWidth: 56,
+          minHeight: 48,
+        ),
+        tooltip: direction,
+      );
 
   @override
   Widget build(BuildContext context) {
-    const bg = Color(0xFF0B1020);
-    const xColor = Color(0xFF50E3C2);
-    const oColor = Color(0xFFFFB86B);
-
-    final status = winner != null
-        ? 'Player $winner wins!'
-        : draw
-            ? "It's a draw!"
-            : "Player $current's turn";
-
     return Scaffold(
-      backgroundColor: bg,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final compact = constraints.maxHeight < 650;
+            final boardSize = min(
+              constraints.maxWidth - 24,
+              constraints.maxHeight * 0.46,
+            );
 
-            return Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 12,
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    'TIC TAC TOE',
-                    style: TextStyle(
-                      fontSize: compact ? 25 : 32,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 3,
-                      color: Colors.white,
-                    ),
-                  ),
-
-                  SizedBox(height: compact ? 10 : 22),
-
-                  Row(
-                    children: [
-                      _scoreCard(
-                        'PLAYER X',
-                        xWins,
-                        xColor,
-                      ),
-                      const SizedBox(width: 10),
-                      _scoreCard(
-                        'DRAWS',
-                        draws,
-                        Colors.white70,
-                      ),
-                      const SizedBox(width: 10),
-                      _scoreCard(
-                        'PLAYER O',
-                        oWins,
-                        oColor,
-                      ),
-                    ],
-                  ),
-
-                  SizedBox(height: compact ? 12 : 25),
-
-                  Text(
-                    status,
-                    style: TextStyle(
-                      fontSize: compact ? 19 : 23,
-                      fontWeight: FontWeight.bold,
-                      color: winner == 'X'
-                          ? xColor
-                          : winner == 'O'
-                              ? oColor
-                              : Colors.white,
-                    ),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  Expanded(
-                    child: Center(
-                      child: AspectRatio(
-                        aspectRatio: 1,
-                        child: GridView.builder(
-                          physics:
-                              const NeverScrollableScrollPhysics(),
-                          itemCount: 9,
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            crossAxisSpacing: 10,
-                            mainAxisSpacing: 10,
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(12),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - 24,
+                ),
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            '64 - Combina numerele',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                          itemBuilder: (context, index) {
-                            final mark = board[index];
-                            final highlighted =
-                                winningLine.contains(index);
+                        ),
+                        _stat('SCOR', _score),
+                        const SizedBox(width: 8),
+                        _stat('MUTARI', _moves),
+                      ],
+                    ),
 
-                            return Material(
-                              color: highlighted
-                                  ? const Color(0xFF263E4A)
-                                  : const Color(0xFF1A2540),
-                              borderRadius:
-                                  BorderRadius.circular(18),
-                              child: InkWell(
-                                borderRadius:
-                                    BorderRadius.circular(18),
-                                onTap: () => play(index),
-                                child: Center(
-                                  child: FittedBox(
-                                    child: Text(
-                                      mark,
-                                      style: TextStyle(
-                                        fontSize: 76,
-                                        fontWeight:
-                                            FontWeight.w900,
-                                        color: mark == 'X'
-                                            ? xColor
-                                            : oColor,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
+                    const SizedBox(height: 12),
+
+                    Center(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onPanStart: (_) {
+                          _drag = Offset.zero;
+                        },
+                        onPanUpdate: (details) {
+                          _drag += details.delta;
+                        },
+                        onPanEnd: (_) {
+                          if (_drag.distance < 24) return;
+
+                          if (_drag.dx.abs() >
+                              _drag.dy.abs()) {
+                            _move(
+                              _drag.dx > 0
+                                  ? 'right'
+                                  : 'left',
                             );
-                          },
+                          } else {
+                            _move(
+                              _drag.dy > 0
+                                  ? 'down'
+                                  : 'up',
+                            );
+                          }
+                        },
+                        child: Container(
+                          width: boardSize,
+                          height: boardSize,
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFBBADA0),
+                            borderRadius:
+                                BorderRadius.circular(12),
+                          ),
+                          child: GridView.builder(
+                            physics:
+                                const NeverScrollableScrollPhysics(),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 4,
+                              crossAxisSpacing: 7,
+                              mainAxisSpacing: 7,
+                            ),
+                            itemCount: 16,
+                            itemBuilder: (context, i) {
+                              final n = _tiles[i];
+
+                              return Container(
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: _tileColor(n),
+                                  borderRadius:
+                                      BorderRadius.circular(7),
+                                ),
+                                child: n == 0
+                                    ? null
+                                    : Text(
+                                        '$n',
+                                        style: TextStyle(
+                                          fontSize:
+                                              boardSize / 12,
+                                          fontWeight:
+                                              FontWeight.bold,
+                                          color: n <= 4
+                                              ? const Color(
+                                                  0xFF776E65,
+                                                )
+                                              : Colors.white,
+                                        ),
+                                      ),
+                              );
+                            },
+                          ),
                         ),
                       ),
                     ),
-                  ),
 
-                  const SizedBox(height: 12),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: FilledButton.icon(
-                      onPressed: resetBoard,
-                      icon: const Icon(
-                        Icons.refresh_rounded,
-                      ),
-                      label: const Text(
-                        'NEW GAME',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1,
+                    if (_won || _lost)
+                      Padding(
+                        padding:
+                            const EdgeInsets.only(top: 8),
+                        child: Text(
+                          _won
+                              ? 'Bravo! Ai castigat!'
+                              : 'Nu mai exista mutari!',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.bold,
+                            color: _won
+                                ? Colors.green
+                                : Colors.red,
+                          ),
                         ),
                       ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: xColor,
-                        foregroundColor: bg,
+
+                    const SizedBox(height: 8),
+
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _arrow(
+                            Icons.keyboard_arrow_up,
+                            'up',
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _arrow(
+                                Icons.keyboard_arrow_left,
+                                'left',
+                              ),
+                              _arrow(
+                                Icons.keyboard_arrow_down,
+                                'down',
+                              ),
+                              _arrow(
+                                Icons.keyboard_arrow_right,
+                                'right',
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                  ),
 
-                  TextButton(
-                    onPressed: resetScores,
-                    child: const Text(
-                      'Reset scoreboard',
+                    const SizedBox(height: 8),
+
+                    FilledButton.icon(
+                      onPressed: _newGame,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Joc nou'),
                     ),
-                  ),
-                ],
+
+                    const SizedBox(height: 12),
+
+                    const Text(
+                      'Explicatia ultimei mutari',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    TextField(
+                      controller: _details,
+                      readOnly: true,
+                      minLines: 5,
+                      maxLines: 7,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        filled: true,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           },
@@ -284,42 +416,39 @@ class _TicTacToePageState extends State<TicTacToePage> {
     );
   }
 
-  Widget _scoreCard(
-    String title,
-    int score,
-    Color color,
-  ) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          vertical: 12,
-          horizontal: 4,
+  Widget _stat(String title, int value) => Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: 12,
+      vertical: 7,
+    ),
+    decoration: BoxDecoration(
+      color: const Color(0xFFEEE4DA),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Column(
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 10,
+            color: Color(0xFF776E65),
+          ),
         ),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A2540),
-          borderRadius: BorderRadius.circular(14),
+        Text(
+          '$value',
+          style: const TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF776E65),
+          ),
         ),
-        child: Column(
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                color: color,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              '$score',
-              style: const TextStyle(
-                fontSize: 27,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+      ],
+    ),
+  );
+
+  @override
+  void dispose() {
+    _details.dispose();
+    super.dispose();
   }
 }
