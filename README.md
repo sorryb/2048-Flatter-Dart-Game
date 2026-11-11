@@ -1,4 +1,4 @@
-# flutter_github_action
+# Flutter 2048 Game Android
 
 A Flutter project about how to use github action to build the apk file.
 
